@@ -1,0 +1,18 @@
+# Binaries
+webhook_tg_bot
+webhook_tg_bot.exe
+
+# Environment files
+.env
+
+# Go specific
+*.log
+vendor/
+
+# IDE
+.vscode/
+.idea/
+
+# OS specific
+.DS_Store
+Thumbs.db
