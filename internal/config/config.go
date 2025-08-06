@@ -118,7 +118,7 @@ func Load() (*Config, error) {
 	cfg.OpenAIAPIKey = os.Getenv("OPENAI_API_KEY")
 	cfg.OpenAIModel = os.Getenv("OPENAI_MODEL")
 	if cfg.OpenAIModel == "" {
-		cfg.OpenAIModel = "gpt-4o-mini"
+		cfg.OpenAIModel = "gpt-4.1-nano"
 	}
 
 	// Premium categories
