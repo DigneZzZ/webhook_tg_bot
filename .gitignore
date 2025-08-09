@@ -16,3 +16,6 @@ vendor/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# other
+DISCOURSE_FORUM_POST.md
