@@ -25,6 +25,9 @@ type Config struct {
 	OpenAIAPIKey string
 	OpenAIModel  string
 
+	// Debug settings
+	Debug bool
+
 	// Premium categories (paid sections)
 	PremiumCategories []int
 
@@ -118,8 +121,12 @@ func Load() (*Config, error) {
 	cfg.OpenAIAPIKey = os.Getenv("OPENAI_API_KEY")
 	cfg.OpenAIModel = os.Getenv("OPENAI_MODEL")
 	if cfg.OpenAIModel == "" {
-		cfg.OpenAIModel = "gpt-4.1-nano"
+		cfg.OpenAIModel = "gpt-5-mini"
 	}
+
+	// Debug settings
+	debugStr := os.Getenv("DEBUG")
+	cfg.Debug = debugStr == "true" || debugStr == "1"
 
 	// Premium categories
 	premiumCategoriesStr := os.Getenv("PREMIUM_CATEGORIES")

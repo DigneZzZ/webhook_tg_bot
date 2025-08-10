@@ -1,0 +1,32 @@
+# Multi-stage build для максимально легкого образа
+FROM golang:1.23-alpine AS builder
+
+WORKDIR /app
+
+# Копируем зависимости
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Копируем код и собираем
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags='-w -s -extldflags "-static"' \
+    -a -installsuffix cgo \
+    -o webhook_tg_bot .
+
+# Минимальный финальный образ
+FROM scratch
+
+# Копируем CA сертификаты для HTTPS
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Копируем timezone данные
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+
+# Копируем приложение
+COPY --from=builder /app/webhook_tg_bot /webhook_tg_bot
+
+ENV WEBHOOK_PORT=8080
+EXPOSE $WEBHOOK_PORT
+
+CMD ["/webhook_tg_bot"]

@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+README.md
+README_EN.md
+
+# Documentation
+*.md
+docs/
+
+# Development files
+.env
+.env.example
+.env.prod.example
+
+# Build artifacts
+webhook_tg_bot
+webhook_tg_bot.exe
+webhook_tg_bot_linux
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+
+# Scripts
+*.sh
+install.sh
+update_server.sh
+
+# Logs
+*.log

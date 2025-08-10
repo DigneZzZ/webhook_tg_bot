@@ -2,7 +2,7 @@
 
 ![Production Ready](https://img.shields.io/badge/production-ready-green)
 ![Docker](https://img.shields.io/badge/docker-supported-blue)
-![AI Powered](https://img.shields.io/badge/AI-GPT--4.1--nano-orange)
+![AI Powered](https://img.shields.io/badge/AI-GPT--5--mini-orange)
 
 Профессиональный Telegram бот для автоматической отправки уведомлений о новых постах с форума Discourse в Telegram группы с ИИ-генерируемыми резюме.
 
@@ -15,7 +15,7 @@
 - Проверка подписи webhook'ов для безопасности
 
 ### 🤖 ИИ-анализ контента
-- **OpenAI GPT-4.1-nano** для генерации умных резюме
+- **OpenAI GPT-5-mini** для генерации умных резюме
 - Анализ содержания постов с учетом контекста
 - Очистка HTML-тегов для лучшего анализа
 - Специальные шаблоны для разных типов контента
