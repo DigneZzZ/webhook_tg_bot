@@ -86,11 +86,25 @@ func (s *AnnouncementService) CreateAnnouncement(processed *models.ProcessedWebh
 		return "", nil
 	}
 
+	// Валидация данных перед созданием
+	if processed.TopicTitle == "" {
+		return "", fmt.Errorf("topic title is empty")
+	}
+	if processed.Author == "" {
+		return "", fmt.Errorf("author is empty")
+	}
+	if processed.Content == "" {
+		log.Printf("Warning: Content is empty for topic %d, using title as content", processed.TopicID)
+	}
+
 	// Генерируем заголовок анонса
 	title := s.generateAnnouncementTitle(processed)
 
 	// Генерируем содержание анонса
 	content := s.generateAnnouncementContent(processed)
+
+	log.Printf("Creating announcement for topic %d (%s) in category %d", 
+		processed.TopicID, processed.TopicTitle, s.config.AnnouncementCategoryID)
 
 	// Создаем тему в Discourse
 	response, err := s.discourseClient.CreateTopic(

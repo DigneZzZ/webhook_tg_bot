@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 	"webhook_tg_bot/internal/config"
@@ -42,10 +43,10 @@ func NewClient(cfg *config.Config) (*Client, error) {
 
 // CreateTopicRequest структура для создания новой темы
 type CreateTopicRequest struct {
-	Title      string `json:"title"`
-	Raw        string `json:"raw"`
-	CategoryID int    `json:"category,omitempty"`
-	Tags       string `json:"tags,omitempty"`
+	Title    string   `json:"title"`
+	Raw      string   `json:"raw"`
+	Category int      `json:"category,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
 }
 
 // CreateTopicResponse ответ при создании темы
@@ -57,11 +58,12 @@ type CreateTopicResponse struct {
 
 // Category структура категории Discourse
 type Category struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Slug        string `json:"slug"`
-	Description string `json:"description"`
-	ParentID    *int   `json:"parent_category_id,omitempty"`
+	ID                 int    `json:"id"`
+	Name               string `json:"name"`
+	Slug               string `json:"slug"`
+	Description        string `json:"description"`
+	ParentCategoryID   *int   `json:"parent_category_id,omitempty"`
+	SubcategoryIDs     []int  `json:"subcategory_ids,omitempty"`
 }
 
 // CategoriesResponse ответ со списком категорий
@@ -75,19 +77,20 @@ type CategoriesResponse struct {
 func (c *Client) CreateTopic(categoryID int, title, content string, tags []string) (*CreateTopicResponse, error) {
 	url := fmt.Sprintf("%s/posts.json", c.baseURL)
 	
-	// Формируем теги
-	tagsStr := ""
-	if len(tags) > 0 {
-		tagsBytes, _ := json.Marshal(tags)
-		tagsStr = string(tagsBytes)
+	payload := CreateTopicRequest{
+		Title:    title,
+		Raw:      content,
+		Category: categoryID,
+		Tags:     tags,
 	}
 
-	payload := CreateTopicRequest{
-		Title:      title,
-		Raw:        content,
-		CategoryID: categoryID,
-		Tags:       tagsStr,
-	}
+	// Логируем параметры запроса (без API ключей)
+	log.Printf("Creating Discourse topic:")
+	log.Printf("  URL: %s", url)
+	log.Printf("  Category ID: %d", categoryID)
+	log.Printf("  Title: %s", title)
+	log.Printf("  Content length: %d chars", len(content))
+	log.Printf("  Tags: %v", tags)
 
 	return c.makePostRequest(url, payload)
 }
@@ -113,6 +116,54 @@ func (c *Client) GetCategories() ([]Category, error) {
 	}
 
 	return categoriesResp.CategoryList.Categories, nil
+}
+
+// GetDetailedCategories получает детальную информацию о всех категориях, включая подкатегории
+func (c *Client) GetDetailedCategories() ([]Category, error) {
+	url := fmt.Sprintf("%s/categories.json?include_subcategories=true", c.baseURL)
+	
+	resp, err := c.makeGetRequest(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	var categoriesResp CategoriesResponse
+	if err := json.Unmarshal(body, &categoriesResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal categories response: %v", err)
+	}
+
+	return categoriesResp.CategoryList.Categories, nil
+}
+
+// GetCategoryByID получает информацию о конкретной категории
+func (c *Client) GetCategoryByID(categoryID int) (*Category, error) {
+	url := fmt.Sprintf("%s/c/%d/show.json", c.baseURL, categoryID)
+	
+	resp, err := c.makeGetRequest(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	var categoryResp struct {
+		Category Category `json:"category"`
+	}
+	if err := json.Unmarshal(body, &categoryResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal category response: %v", err)
+	}
+
+	return &categoryResp.Category, nil
 }
 
 // makePostRequest выполняет POST запрос к Discourse API
@@ -142,6 +193,12 @@ func (c *Client) makePostRequest(url string, payload interface{}) (*CreateTopicR
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		// Логируем детали ошибки
+		log.Printf("Discourse API error details:")
+		log.Printf("  Status: %d", resp.StatusCode)
+		log.Printf("  Body: %s", string(body))
+		log.Printf("  URL: %s", url)
+		
 		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -184,9 +241,31 @@ func (c *Client) setHeaders(req *http.Request) {
 
 // TestConnection проверяет подключение к Discourse API
 func (c *Client) TestConnection() error {
-	_, err := c.GetCategories()
+	log.Printf("Testing Discourse API connection...")
+	log.Printf("  Base URL: %s", c.baseURL)
+	log.Printf("  API Username: %s", c.apiUsername)
+	log.Printf("  API Key: %s...%s", c.apiKey[:min(8, len(c.apiKey))], c.apiKey[max(0, len(c.apiKey)-4):])
+	
+	categories, err := c.GetCategories()
 	if err != nil {
 		return fmt.Errorf("failed to connect to Discourse API: %v", err)
 	}
+	
+	log.Printf("Successfully connected to Discourse API, found %d categories", len(categories))
 	return nil
+}
+
+// Вспомогательные функции для безопасного вычисления min/max
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
