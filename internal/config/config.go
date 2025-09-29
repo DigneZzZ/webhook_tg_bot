@@ -49,7 +49,7 @@ type Config struct {
 	DiscourseBaseURL     string
 
 	// Announcement settings
-	AnnouncementCategoryID int // Category ID where to post announcements
+	AnnouncementCategoryID int  // Category ID where to post announcements
 	EnableAnnouncements    bool // Whether to enable automatic announcements
 }
 

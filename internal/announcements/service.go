@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"webhook_tg_bot/internal/ai"
 	"webhook_tg_bot/internal/config"
 	"webhook_tg_bot/internal/discourse"
 	"webhook_tg_bot/internal/models"
@@ -13,6 +14,7 @@ import (
 type AnnouncementService struct {
 	config          *config.Config
 	discourseClient *discourse.Client
+	ai              ai.AIProvider
 }
 
 // NewAnnouncementService создает новый сервис анонсов
@@ -20,6 +22,12 @@ func NewAnnouncementService(cfg *config.Config) (*AnnouncementService, error) {
 	// Проверяем, включены ли анонсы
 	if !cfg.EnableAnnouncements {
 		return nil, fmt.Errorf("announcements are disabled")
+	}
+
+	// Инициализируем AI провайдер
+	aiProvider, err := ai.NewProvider(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AI provider: %v", err)
 	}
 
 	// Создаем клиент Discourse только если все настройки заданы
@@ -42,6 +50,7 @@ func NewAnnouncementService(cfg *config.Config) (*AnnouncementService, error) {
 	return &AnnouncementService{
 		config:          cfg,
 		discourseClient: discourseClient,
+		ai:              aiProvider,
 	}, nil
 }
 
@@ -100,10 +109,10 @@ func (s *AnnouncementService) CreateAnnouncement(processed *models.ProcessedWebh
 	// Генерируем заголовок анонса
 	title := s.generateAnnouncementTitle(processed)
 
-	// Генерируем содержание анонса
+	// Генерируем содержание анонса с AI резюме
 	content := s.generateAnnouncementContent(processed)
 
-	log.Printf("Creating announcement for topic %d (%s) in category %d", 
+	log.Printf("Creating announcement for topic %d (%s) in category %d",
 		processed.TopicID, processed.TopicTitle, s.config.AnnouncementCategoryID)
 
 	// Создаем тему в Discourse
@@ -128,7 +137,7 @@ func (s *AnnouncementService) generateAnnouncementTitle(processed *models.Proces
 	// Ограничиваем длину заголовка
 	maxLength := 80
 	title := processed.TopicTitle
-	
+
 	if len(title) > maxLength {
 		title = title[:maxLength-3] + "..."
 	}
@@ -136,7 +145,7 @@ func (s *AnnouncementService) generateAnnouncementTitle(processed *models.Proces
 	return fmt.Sprintf("📢 Анонс: %s", title)
 }
 
-// generateAnnouncementContent генерирует содержание анонса
+// generateAnnouncementContent генерирует содержание анонса с AI резюме
 func (s *AnnouncementService) generateAnnouncementContent(processed *models.ProcessedWebhook) string {
 	// Определяем префикс роли автора
 	var roleEmoji string
@@ -163,39 +172,67 @@ func (s *AnnouncementService) generateAnnouncementContent(processed *models.Proc
 		tagsStr = strings.Join(tags, ", ")
 	}
 
-	// Генерируем краткое описание (первые 200 символов контента)
-	description := processed.Content
-	if len(description) > 200 {
-		description = description[:200] + "..."
+	// Генерируем AI резюме (как в Telegram боте)
+	aiSummary, err := s.ai.GenerateSummary(processed.Content, processed.TopicTitle, processed.AuthorRole, processed.Category)
+	if err != nil {
+		log.Printf("Failed to generate AI summary for announcement: %v", err)
+		// Fallback: используем первые 300 символов контента
+		aiSummary = processed.Content
+		if len(aiSummary) > 300 {
+			aiSummary = aiSummary[:300] + "..."
+		}
+		aiSummary = strings.ReplaceAll(aiSummary, "\n", " ")
 	}
-	description = strings.ReplaceAll(description, "\n", " ")
+
+	// Генерируем расширенное описание (больше контента чем в Telegram)
+	extendedDescription := processed.Content
+	if len(extendedDescription) > 500 {
+		extendedDescription = extendedDescription[:500] + "..."
+	}
+	extendedDescription = strings.ReplaceAll(extendedDescription, "\n", "\n\n")
 
 	content := fmt.Sprintf(`## %s %s создал новую тему в премиум разделе
 
-**Тема:** %s
+**Название темы:** %s
 
-**Краткое описание:**
+**📋 Краткое описание (AI):**
 %s
 
-**Теги:** %s
+**📖 Расширенное описание:**
+%s
+
+**🏷 Теги:** %s  
+**📂 Категория:** %s
 
 ---
 
-💎 **Это анонс платного контента.** Полная тема доступна только подписчикам VIP.
+## 💎 О премиум контенте
 
-🤖 **Как получить доступ:**
-• Оформите VIP подписку через наш Telegram бот: https://t.me/gig_combot
-• Доступ к контенту предоставляется автоматически после оплаты подписки
-• В подписке доступны все премиум разделы форума
+Это анонс платного контента. Полная тема со всеми материалами, комментариями и обсуждением доступна только подписчикам VIP.
+
+### 🚀 Преимущества VIP подписки:
+- Доступ ко всем премиум разделам форума
+- Эксклюзивные материалы от экспертов
+- Участие в закрытых обсуждениях
+- Первоочередная поддержка
+
+### 🤖 Как получить доступ:
+1. Перейдите в наш Telegram бот: https://t.me/gig_combot
+2. Выберите VIP подписку
+3. Доступ предоставляется автоматически после оплаты
 
 🔗 **[Перейти к оригинальной теме](%s)** (требуется VIP подписка)
 
-💬 **Есть вопросы?** Задавайте их в комментариях к этому анонсу!`,
+---
+
+💬 **Есть вопросы о теме?** Задавайте их в комментариях к этому анонсу! Мы ответим на общие вопросы, а для получения полной информации рекомендуем оформить подписку.`,
 		roleEmoji,
 		processed.Author,
 		processed.TopicTitle,
-		description,
+		aiSummary,
+		extendedDescription,
 		tagsStr,
+		processed.Category,
 		processed.URL,
 	)
 

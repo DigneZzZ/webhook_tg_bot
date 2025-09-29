@@ -13,10 +13,10 @@ import (
 
 // Client клиент для работы с Discourse API
 type Client struct {
-	baseURL    string
-	apiKey     string
+	baseURL     string
+	apiKey      string
 	apiUsername string
-	httpClient *http.Client
+	httpClient  *http.Client
 }
 
 // NewClient создает новый клиент Discourse API
@@ -58,12 +58,12 @@ type CreateTopicResponse struct {
 
 // Category структура категории Discourse
 type Category struct {
-	ID                 int    `json:"id"`
-	Name               string `json:"name"`
-	Slug               string `json:"slug"`
-	Description        string `json:"description"`
-	ParentCategoryID   *int   `json:"parent_category_id,omitempty"`
-	SubcategoryIDs     []int  `json:"subcategory_ids,omitempty"`
+	ID               int    `json:"id"`
+	Name             string `json:"name"`
+	Slug             string `json:"slug"`
+	Description      string `json:"description"`
+	ParentCategoryID *int   `json:"parent_category_id,omitempty"`
+	SubcategoryIDs   []int  `json:"subcategory_ids,omitempty"`
 }
 
 // CategoriesResponse ответ со списком категорий
@@ -76,7 +76,7 @@ type CategoriesResponse struct {
 // CreateTopic создает новую тему в указанной категории
 func (c *Client) CreateTopic(categoryID int, title, content string, tags []string) (*CreateTopicResponse, error) {
 	url := fmt.Sprintf("%s/posts.json", c.baseURL)
-	
+
 	payload := CreateTopicRequest{
 		Title:    title,
 		Raw:      content,
@@ -98,7 +98,7 @@ func (c *Client) CreateTopic(categoryID int, title, content string, tags []strin
 // GetCategories получает список всех категорий
 func (c *Client) GetCategories() ([]Category, error) {
 	url := fmt.Sprintf("%s/categories.json", c.baseURL)
-	
+
 	resp, err := c.makeGetRequest(url)
 	if err != nil {
 		return nil, err
@@ -121,7 +121,7 @@ func (c *Client) GetCategories() ([]Category, error) {
 // GetDetailedCategories получает детальную информацию о всех категориях, включая подкатегории
 func (c *Client) GetDetailedCategories() ([]Category, error) {
 	url := fmt.Sprintf("%s/categories.json?include_subcategories=true", c.baseURL)
-	
+
 	resp, err := c.makeGetRequest(url)
 	if err != nil {
 		return nil, err
@@ -144,7 +144,7 @@ func (c *Client) GetDetailedCategories() ([]Category, error) {
 // GetCategoryByID получает информацию о конкретной категории
 func (c *Client) GetCategoryByID(categoryID int) (*Category, error) {
 	url := fmt.Sprintf("%s/c/%d/show.json", c.baseURL, categoryID)
-	
+
 	resp, err := c.makeGetRequest(url)
 	if err != nil {
 		return nil, err
@@ -198,7 +198,7 @@ func (c *Client) makePostRequest(url string, payload interface{}) (*CreateTopicR
 		log.Printf("  Status: %d", resp.StatusCode)
 		log.Printf("  Body: %s", string(body))
 		log.Printf("  URL: %s", url)
-		
+
 		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -245,12 +245,12 @@ func (c *Client) TestConnection() error {
 	log.Printf("  Base URL: %s", c.baseURL)
 	log.Printf("  API Username: %s", c.apiUsername)
 	log.Printf("  API Key: %s...%s", c.apiKey[:min(8, len(c.apiKey))], c.apiKey[max(0, len(c.apiKey)-4):])
-	
+
 	categories, err := c.GetCategories()
 	if err != nil {
 		return fmt.Errorf("failed to connect to Discourse API: %v", err)
 	}
-	
+
 	log.Printf("Successfully connected to Discourse API, found %d categories", len(categories))
 	return nil
 }

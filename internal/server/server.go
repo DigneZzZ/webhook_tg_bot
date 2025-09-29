@@ -21,11 +21,11 @@ import (
 )
 
 type Server struct {
-	config               *config.Config
-	bot                  *bot.TelegramBot
-	router               *mux.Router
-	storage              *storage.MemoryStorage
-	announcementService  *announcements.AnnouncementService
+	config              *config.Config
+	bot                 *bot.TelegramBot
+	router              *mux.Router
+	storage             *storage.MemoryStorage
+	announcementService *announcements.AnnouncementService
 }
 
 func New(cfg *config.Config, bot *bot.TelegramBot) *Server {

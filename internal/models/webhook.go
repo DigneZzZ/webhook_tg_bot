@@ -72,7 +72,7 @@ type ProcessedWebhook struct {
 	TopicID         int
 	TopicTitle      string
 	Category        string
-	CategoryID      int    // ID категории для маппинга на thread
+	CategoryID      int // ID категории для маппинга на thread
 	Author          string
 	AuthorRole      string // роль автора (admin, moderator, staff, user)
 	Content         string
