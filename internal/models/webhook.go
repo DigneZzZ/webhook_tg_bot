@@ -68,15 +68,16 @@ type User struct {
 
 // ProcessedWebhook обработанные данные для отправки в Telegram
 type ProcessedWebhook struct {
-	Type       string // "topic" или "post"
-	TopicID    int
-	TopicTitle string
-	Category   string
-	CategoryID int // ID категории для маппинга на thread
-	Author     string
-	AuthorRole string // роль автора (admin, moderator, staff, user)
-	Content    string
-	Tags       []string
-	Summary    string
-	URL        string
+	Type            string // "topic" или "post"
+	TopicID         int
+	TopicTitle      string
+	Category        string
+	CategoryID      int    // ID категории для маппинга на thread
+	Author          string
+	AuthorRole      string // роль автора (admin, moderator, staff, user)
+	Content         string
+	Tags            []string
+	Summary         string
+	URL             string
+	AnnouncementURL string // URL анонса, если был создан
 }

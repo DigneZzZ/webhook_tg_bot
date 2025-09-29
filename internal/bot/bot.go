@@ -75,7 +75,12 @@ func (tb *TelegramBot) SendCompleteNotification(processed *models.ProcessedWebho
 	// Добавляем информацию о платности, если нужно
 	if isPremium {
 		message += "\n\n💎 <b>Данный раздел доступен только по подписке.</b>\n" +
-			"Оформить VIP можно в тг-боте: @gig_combot"
+			"Оформить VIP можно в тг-боте: https://t.me/gig_combot"
+			
+		// Если есть ссылка на анонс, добавляем её
+		if processed.AnnouncementURL != "" {
+			message += "\n\n💬 <a href=\"" + processed.AnnouncementURL + "\">Обсудить в анонсе</a> - задавайте вопросы и делитесь мнением!"
+		}
 	}
 
 	// Определяем thread ID на основе категории

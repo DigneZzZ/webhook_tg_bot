@@ -42,6 +42,15 @@ type Config struct {
 
 	// Base URL for topics
 	BaseURL string
+
+	// Discourse API settings for creating topics
+	DiscourseAPIKey      string
+	DiscourseAPIUsername string
+	DiscourseBaseURL     string
+
+	// Announcement settings
+	AnnouncementCategoryID int // Category ID where to post announcements
+	EnableAnnouncements    bool // Whether to enable automatic announcements
 }
 
 func Load() (*Config, error) {
@@ -177,6 +186,25 @@ func Load() (*Config, error) {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "https://your-forum.com"
 	}
+
+	// Discourse API settings
+	cfg.DiscourseAPIKey = os.Getenv("DISCOURSE_API_KEY")
+	cfg.DiscourseAPIUsername = os.Getenv("DISCOURSE_API_USERNAME")
+	cfg.DiscourseBaseURL = os.Getenv("DISCOURSE_BASE_URL")
+	if cfg.DiscourseBaseURL == "" {
+		cfg.DiscourseBaseURL = cfg.BaseURL // fallback to BASE_URL
+	}
+
+	// Announcement settings
+	announcementCategoryStr := os.Getenv("ANNOUNCEMENT_CATEGORY_ID")
+	if announcementCategoryStr != "" {
+		if id, err := strconv.Atoi(announcementCategoryStr); err == nil {
+			cfg.AnnouncementCategoryID = id
+		}
+	}
+
+	enableAnnouncementsStr := os.Getenv("ENABLE_ANNOUNCEMENTS")
+	cfg.EnableAnnouncements = enableAnnouncementsStr == "true" || enableAnnouncementsStr == "1"
 
 	return cfg, nil
 }

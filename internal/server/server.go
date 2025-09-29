@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 
+	"webhook_tg_bot/internal/announcements"
 	"webhook_tg_bot/internal/bot"
 	"webhook_tg_bot/internal/config"
 	"webhook_tg_bot/internal/models"
@@ -20,18 +21,32 @@ import (
 )
 
 type Server struct {
-	config  *config.Config
-	bot     *bot.TelegramBot
-	router  *mux.Router
-	storage *storage.MemoryStorage
+	config               *config.Config
+	bot                  *bot.TelegramBot
+	router               *mux.Router
+	storage              *storage.MemoryStorage
+	announcementService  *announcements.AnnouncementService
 }
 
 func New(cfg *config.Config, bot *bot.TelegramBot) *Server {
+	// Инициализируем сервис анонсов
+	var announcementService *announcements.AnnouncementService
+	if cfg.EnableAnnouncements {
+		service, err := announcements.NewAnnouncementService(cfg)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize announcement service: %v", err)
+		} else {
+			announcementService = service
+			log.Printf("Announcement service initialized successfully")
+		}
+	}
+
 	s := &Server{
-		config:  cfg,
-		bot:     bot,
-		router:  mux.NewRouter(),
-		storage: storage.NewMemoryStorage(),
+		config:              cfg,
+		bot:                 bot,
+		router:              mux.NewRouter(),
+		storage:             storage.NewMemoryStorage(),
+		announcementService: announcementService,
 	}
 
 	s.setupRoutes()
@@ -252,7 +267,17 @@ func (s *Server) sendCompleteNotification(data *storage.TopicData) error {
 		URL:        fmt.Sprintf("%s/t/%s/%d", s.config.BaseURL, data.Topic.Slug, data.Topic.ID),
 	}
 
-	// Отправляем уведомление
+	// Если это платная категория, создаем анонс
+	if s.announcementService != nil && s.announcementService.ShouldCreateAnnouncement(processed) {
+		if announcementURL, announcementErr := s.announcementService.CreateAnnouncement(processed); announcementErr != nil {
+			log.Printf("Failed to create announcement for topic %d: %v", processed.TopicID, announcementErr)
+		} else if announcementURL != "" {
+			// Сохраняем ссылку на анонс для использования в Telegram уведомлении
+			processed.AnnouncementURL = announcementURL
+		}
+	}
+
+	// Отправляем уведомление в Telegram (с возможной ссылкой на анонс)
 	err := s.bot.SendCompleteNotification(processed, s.config.IsPremiumCategory(data.Topic.CategoryID))
 
 	// Удаляем данные из хранилища после отправки
