@@ -32,6 +32,12 @@ Professional Telegram bot for automatic notifications about new posts from Disco
 - **Block bots** (discobot, chatbot and others)
 - **Premium sections** with subscription notifications
 
+### 📢 Announcement System (NEW!)
+- **Automatic announcement creation** for premium sections
+- **AI-generated summaries** without revealing paid content
+- **Discourse API integration** for topic creation
+- **Safe previews** with subscription call-to-action
+
 ### 🚀 Production Ready
 - Docker containerization with healthcheck
 - GitHub Actions for automatic builds
@@ -51,6 +57,7 @@ Professional Telegram bot for automatic notifications about new posts from Disco
 🏷 Tags: #docker, #database, #troubleshooting
 
 💎 This section is available by subscription only.
+💬 Discuss in announcement - ask questions and share your thoughts!
 ```
 
 ### Role Prefixes
@@ -76,6 +83,18 @@ WEBHOOK_SECRET=your_super_secret_key_here                # Secret key for signat
 WEBHOOK_PORT=8080                                        # Webhook server port
 WEBHOOK_PATH=/webhook                                     # Endpoint path
 WEBHOOK_DOMAIN=https://your-server.com                   # Server domain (optional)
+```
+
+### 📢 Announcement Settings
+```bash
+# Discourse API for announcements
+DISCOURSE_API_KEY=your_discourse_api_key_here            # API key from Discourse admin
+DISCOURSE_API_USERNAME=bot_username                      # Bot username
+DISCOURSE_BASE_URL=https://your-forum.com                # Forum URL
+
+# Announcements
+ENABLE_ANNOUNCEMENTS=true                                # Enable announcement creation
+ANNOUNCEMENT_CATEGORY_ID=28                               # Category ID for announcements
 ```
 
 ### 🤖 AI Settings
@@ -182,6 +201,24 @@ Which events: Topic Event + Post Event
 ### 2. Getting Category IDs
 Go to admin panel: `https://your-forum.com/admin/customize/site_texts`
 Or check category URL: `https://your-forum.com/c/category-name/5` (where 5 is the ID)
+
+### 3. Creating API Keys for Announcements (Optional)
+1. Go to **Admin → API → API Keys**
+2. Click **New API Key**
+3. Fill in parameters:
+```
+Description: webhook_tg_bot_announcements
+User Level: Single User
+User: bot_username (create a separate bot user)
+Scope: Global (or limit to needed endpoints)
+```
+4. Copy key to `DISCOURSE_API_KEY`
+5. Set username in `DISCOURSE_API_USERNAME`
+
+### 4. Creating Announcement Category
+1. Go to **Admin → Structure → Categories**
+2. Create new category (e.g., "VIP Announcements")
+3. Remember category ID for `ANNOUNCEMENT_CATEGORY_ID`
 
 ### 3. Getting User IDs  
 Go to admin panel: `https://your-forum.com/admin/users/USERNAME`
