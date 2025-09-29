@@ -145,7 +145,7 @@ func (s *AnnouncementService) generateAnnouncementTitle(processed *models.Proces
 	return fmt.Sprintf("📢 Анонс: %s", title)
 }
 
-// generateAnnouncementContent генерирует содержание анонса с AI резюме
+// generateAnnouncementContent генерирует содержание анонса с безопасной логикой
 func (s *AnnouncementService) generateAnnouncementContent(processed *models.ProcessedWebhook) string {
 	// Определяем префикс роли автора
 	var roleEmoji string
@@ -172,33 +172,19 @@ func (s *AnnouncementService) generateAnnouncementContent(processed *models.Proc
 		tagsStr = strings.Join(tags, ", ")
 	}
 
-	// Генерируем AI резюме (как в Telegram боте)
+	// Генерируем только AI резюме (безопасно, так как ИИ делает краткую выжимку)
 	aiSummary, err := s.ai.GenerateSummary(processed.Content, processed.TopicTitle, processed.AuthorRole, processed.Category)
 	if err != nil {
 		log.Printf("Failed to generate AI summary for announcement: %v", err)
-		// Fallback: используем первые 300 символов контента
-		aiSummary = processed.Content
-		if len(aiSummary) > 300 {
-			aiSummary = aiSummary[:300] + "..."
-		}
-		aiSummary = strings.ReplaceAll(aiSummary, "\n", " ")
+		// Fallback: безопасная заглушка без раскрытия контента
+		aiSummary = "Новая тема в премиум разделе. Подробности доступны только подписчикам VIP."
 	}
-
-	// Генерируем расширенное описание (больше контента чем в Telegram)
-	extendedDescription := processed.Content
-	if len(extendedDescription) > 500 {
-		extendedDescription = extendedDescription[:500] + "..."
-	}
-	extendedDescription = strings.ReplaceAll(extendedDescription, "\n", "\n\n")
 
 	content := fmt.Sprintf(`## %s %s создал новую тему в премиум разделе
 
 **Название темы:** %s
 
-**📋 Краткое описание (AI):**
-%s
-
-**📖 Расширенное описание:**
+**📋 Краткое описание:**
 %s
 
 **🏷 Теги:** %s  
@@ -230,7 +216,6 @@ func (s *AnnouncementService) generateAnnouncementContent(processed *models.Proc
 		processed.Author,
 		processed.TopicTitle,
 		aiSummary,
-		extendedDescription,
 		tagsStr,
 		processed.Category,
 		processed.URL,
