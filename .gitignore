@@ -25,3 +25,4 @@ openapi.json
 
 # Other temporary files
 DISCOURSE_FORUM_POST.md
+webhook_bot
