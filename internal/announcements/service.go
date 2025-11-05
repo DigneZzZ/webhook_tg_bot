@@ -56,63 +56,89 @@ func NewAnnouncementService(cfg *config.Config) (*AnnouncementService, error) {
 
 // ShouldCreateAnnouncement проверяет, нужно ли создавать анонс для этой темы
 func (s *AnnouncementService) ShouldCreateAnnouncement(processed *models.ProcessedWebhook) bool {
+	log.Printf("[Announcement Check] Topic ID: %d, Title: %s, Category: %d", 
+		processed.TopicID, processed.TopicTitle, processed.CategoryID)
+
 	// Проверяем, что анонсы включены
 	if !s.config.EnableAnnouncements {
+		log.Printf("[Announcement Check] ❌ Announcements are disabled")
 		return false
 	}
+	log.Printf("[Announcement Check] ✅ Announcements enabled")
 
 	// Проверяем, что настроена категория для анонсов
 	if s.config.AnnouncementCategoryID == 0 {
+		log.Printf("[Announcement Check] ❌ Announcement category ID is not set")
 		return false
 	}
+	log.Printf("[Announcement Check] ✅ Announcement category: %d", s.config.AnnouncementCategoryID)
 
 	// Проверяем, что есть клиент Discourse
 	if s.discourseClient == nil {
+		log.Printf("[Announcement Check] ❌ Discourse client is nil")
 		return false
 	}
+	log.Printf("[Announcement Check] ✅ Discourse client is available")
 
 	// Проверяем, что тема из платной категории
 	if !s.config.IsPremiumCategory(processed.CategoryID) {
+		log.Printf("[Announcement Check] ❌ Category %d is not premium", processed.CategoryID)
 		return false
 	}
+	log.Printf("[Announcement Check] ✅ Category %d is premium", processed.CategoryID)
 
 	// Не создаем анонс для той же категории анонсов (предотвращаем рекурсию)
 	if processed.CategoryID == s.config.AnnouncementCategoryID {
+		log.Printf("[Announcement Check] ❌ Skipping - topic is already in announcement category %d", processed.CategoryID)
 		return false
 	}
+	log.Printf("[Announcement Check] ✅ Not in announcement category")
 
 	// Не создаем анонс, если заголовок уже содержит "📢 Анонс:" (дополнительная защита)
 	if strings.HasPrefix(processed.TopicTitle, "📢 Анонс:") {
+		log.Printf("[Announcement Check] ❌ Skipping - title already has announcement prefix")
 		return false
 	}
+	log.Printf("[Announcement Check] ✅ Title doesn't have announcement prefix")
 
+	log.Printf("[Announcement Check] ✅✅✅ ALL CHECKS PASSED - will create announcement!")
 	return true
 }
 
 // CreateAnnouncement создает анонс темы в категории анонсов и возвращает URL
 func (s *AnnouncementService) CreateAnnouncement(processed *models.ProcessedWebhook) (string, error) {
+	log.Printf("[Create Announcement] Starting for topic %d", processed.TopicID)
+	
 	if !s.ShouldCreateAnnouncement(processed) {
+		log.Printf("[Create Announcement] ❌ ShouldCreateAnnouncement returned false - skipping")
 		return "", nil
 	}
 
+	log.Printf("[Create Announcement] ✅ Passed all checks, proceeding to create")
+
 	// Валидация данных перед созданием
 	if processed.TopicTitle == "" {
+		log.Printf("[Create Announcement] ❌ Error: topic title is empty")
 		return "", fmt.Errorf("topic title is empty")
 	}
 	if processed.Author == "" {
+		log.Printf("[Create Announcement] ❌ Error: author is empty")
 		return "", fmt.Errorf("author is empty")
 	}
 	if processed.Content == "" {
-		log.Printf("Warning: Content is empty for topic %d, using title as content", processed.TopicID)
+		log.Printf("[Create Announcement] ⚠️  Warning: Content is empty for topic %d, using title as content", processed.TopicID)
 	}
 
 	// Генерируем заголовок анонса
 	title := s.generateAnnouncementTitle(processed)
+	log.Printf("[Create Announcement] Generated title: %s", title)
 
 	// Генерируем содержание анонса с AI резюме
+	log.Printf("[Create Announcement] Generating content with AI...")
 	content := s.generateAnnouncementContent(processed)
+	log.Printf("[Create Announcement] Content generated (length: %d chars)", len(content))
 
-	log.Printf("Creating announcement for topic %d (%s) in category %d",
+	log.Printf("[Create Announcement] 🚀 Creating announcement for topic %d (%s) in category %d",
 		processed.TopicID, processed.TopicTitle, s.config.AnnouncementCategoryID)
 
 	// Создаем тему в Discourse
@@ -123,12 +149,13 @@ func (s *AnnouncementService) CreateAnnouncement(processed *models.ProcessedWebh
 		[]string{"анонс", "премиум"},
 	)
 	if err != nil {
+		log.Printf("[Create Announcement] ❌ FAILED to create topic: %v", err)
 		return "", fmt.Errorf("failed to create announcement topic: %v", err)
 	}
 
 	// Формируем URL анонса
 	announcementURL := fmt.Sprintf("%s/t/%s/%d", s.config.DiscourseBaseURL, response.TopicSlug, response.TopicID)
-	log.Printf("Created announcement topic: %s (ID: %d, URL: %s)", title, response.TopicID, announcementURL)
+	log.Printf("[Create Announcement] ✅ SUCCESS! Created announcement topic: %s (ID: %d, URL: %s)", title, response.TopicID, announcementURL)
 	return announcementURL, nil
 }
 
