@@ -51,6 +51,15 @@ type Config struct {
 	// Announcement settings
 	AnnouncementCategoryID int  // Category ID where to post announcements
 	EnableAnnouncements    bool // Whether to enable automatic announcements
+
+	// Subscription info mapping: category_id -> subscription info
+	CategorySubscriptions map[int]*SubscriptionInfo
+}
+
+// SubscriptionInfo содержит информацию о подписке для группы категорий
+type SubscriptionInfo struct {
+	Name    string // Название подписки (например "VIP подписка", "Доступ к SHM")
+	BotText string // Текст для бота (например "Оформить VIP можно в тг-боте: https://t.me/gig_combot")
 }
 
 func Load() (*Config, error) {
@@ -206,11 +215,56 @@ func Load() (*Config, error) {
 	enableAnnouncementsStr := os.Getenv("ENABLE_ANNOUNCEMENTS")
 	cfg.EnableAnnouncements = enableAnnouncementsStr == "true" || enableAnnouncementsStr == "1"
 
+	// Category subscriptions mapping
+	cfg.CategorySubscriptions = make(map[int]*SubscriptionInfo)
+	// Формат:
+	// SUBSCRIPTION_NAME_1=VIP подписка
+	// SUBSCRIPTION_CATEGORIES_1=10,11,12,13,22,23,24
+	// SUBSCRIPTION_BOT_TEXT_1=Оформить VIP можно в тг-боте: https://t.me/gig_combot
+	//
+	// SUBSCRIPTION_NAME_2=Доступ к материалам SHM
+	// SUBSCRIPTION_CATEGORIES_2=5
+	// SUBSCRIPTION_BOT_TEXT_2=Приобрести доступ к SHM можно в боте: https://t.me/gig_combot
+	for i := 1; i <= 10; i++ { // поддерживаем до 10 разных подписок
+		nameKey := fmt.Sprintf("SUBSCRIPTION_NAME_%d", i)
+		categoriesKey := fmt.Sprintf("SUBSCRIPTION_CATEGORIES_%d", i)
+		botTextKey := fmt.Sprintf("SUBSCRIPTION_BOT_TEXT_%d", i)
+
+		subscriptionName := os.Getenv(nameKey)
+		categoriesStr := os.Getenv(categoriesKey)
+		botText := os.Getenv(botTextKey)
+
+		if subscriptionName != "" && categoriesStr != "" && botText != "" {
+			subscriptionInfo := &SubscriptionInfo{
+				Name:    subscriptionName,
+				BotText: botText,
+			}
+
+			categories := strings.Split(categoriesStr, ",")
+			for _, catStr := range categories {
+				catStr = strings.TrimSpace(catStr)
+				if catStr != "" {
+					categoryID, err := strconv.Atoi(catStr)
+					if err != nil {
+						return nil, fmt.Errorf("invalid category ID '%s' in %s: %v", catStr, categoriesKey, err)
+					}
+					cfg.CategorySubscriptions[categoryID] = subscriptionInfo
+				}
+			}
+		}
+	}
+
 	return cfg, nil
 }
 
 // IsPremiumCategory проверяет, является ли категория платной
 func (cfg *Config) IsPremiumCategory(categoryID int) bool {
+	// Проверяем новый маппинг подписок
+	if _, exists := cfg.CategorySubscriptions[categoryID]; exists {
+		return true
+	}
+
+	// Fallback на старый способ для обратной совместимости
 	for _, premiumID := range cfg.PremiumCategories {
 		if premiumID == categoryID {
 			return true
@@ -259,4 +313,9 @@ func (cfg *Config) ShouldIgnoreUser(userID int) bool {
 		}
 	}
 	return false
+}
+
+// GetSubscriptionInfo возвращает информацию о подписке для категории
+func (cfg *Config) GetSubscriptionInfo(categoryID int) *SubscriptionInfo {
+	return cfg.CategorySubscriptions[categoryID]
 }

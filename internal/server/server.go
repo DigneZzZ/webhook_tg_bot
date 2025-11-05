@@ -268,11 +268,12 @@ func (s *Server) sendCompleteNotification(data *storage.TopicData) error {
 	}
 
 	// Если это платная категория, создаем анонс
+	subscriptionInfo := s.config.GetSubscriptionInfo(data.Topic.CategoryID)
 	if s.announcementService != nil && s.announcementService.ShouldCreateAnnouncement(processed) {
 		log.Printf("[Server] 📢 Topic %d is in premium category %d - attempting to create announcement",
 			processed.TopicID, processed.CategoryID)
 
-		if announcementURL, announcementErr := s.announcementService.CreateAnnouncement(processed); announcementErr != nil {
+		if announcementURL, announcementErr := s.announcementService.CreateAnnouncement(processed, subscriptionInfo); announcementErr != nil {
 			log.Printf("[Server] ❌ Failed to create announcement for topic %d: %v", processed.TopicID, announcementErr)
 		} else if announcementURL != "" {
 			// Сохраняем ссылку на анонс для использования в Telegram уведомлении
@@ -291,7 +292,7 @@ func (s *Server) sendCompleteNotification(data *storage.TopicData) error {
 	}
 
 	// Отправляем уведомление в Telegram (с возможной ссылкой на анонс)
-	err := s.bot.SendCompleteNotification(processed, s.config.IsPremiumCategory(data.Topic.CategoryID))
+	err := s.bot.SendCompleteNotification(processed, subscriptionInfo)
 
 	// Удаляем данные из хранилища после отправки
 	s.storage.RemoveTopic(data.Topic.ID)

@@ -106,7 +106,7 @@ func (s *AnnouncementService) ShouldCreateAnnouncement(processed *models.Process
 }
 
 // CreateAnnouncement создает анонс темы в категории анонсов и возвращает URL
-func (s *AnnouncementService) CreateAnnouncement(processed *models.ProcessedWebhook) (string, error) {
+func (s *AnnouncementService) CreateAnnouncement(processed *models.ProcessedWebhook, subscriptionInfo *config.SubscriptionInfo) (string, error) {
 	log.Printf("[Create Announcement] Starting for topic %d", processed.TopicID)
 
 	if !s.ShouldCreateAnnouncement(processed) {
@@ -135,7 +135,7 @@ func (s *AnnouncementService) CreateAnnouncement(processed *models.ProcessedWebh
 
 	// Генерируем содержание анонса с AI резюме
 	log.Printf("[Create Announcement] Generating content with AI...")
-	content := s.generateAnnouncementContent(processed)
+	content := s.generateAnnouncementContent(processed, subscriptionInfo)
 	log.Printf("[Create Announcement] Content generated (length: %d chars)", len(content))
 
 	log.Printf("[Create Announcement] 🚀 Creating announcement for topic %d (%s) in category %d",
@@ -177,7 +177,7 @@ func (s *AnnouncementService) generateAnnouncementTitle(processed *models.Proces
 }
 
 // generateAnnouncementContent генерирует содержание анонса с безопасной логикой
-func (s *AnnouncementService) generateAnnouncementContent(processed *models.ProcessedWebhook) string {
+func (s *AnnouncementService) generateAnnouncementContent(processed *models.ProcessedWebhook, subscriptionInfo *config.SubscriptionInfo) string {
 	// Определяем префикс роли автора
 	var roleEmoji string
 	switch processed.AuthorRole {
@@ -208,7 +208,18 @@ func (s *AnnouncementService) generateAnnouncementContent(processed *models.Proc
 	if err != nil {
 		log.Printf("Failed to generate AI summary for announcement: %v", err)
 		// Fallback: безопасная заглушка без раскрытия контента
-		aiSummary = "Новая тема в премиум разделе. Подробности доступны только подписчикам VIP."
+		aiSummary = "Новая тема в премиум разделе. Подробности доступны только подписчикам."
+	}
+
+	// Используем переданную информацию о подписке или fallback
+	var subscriptionName, subscriptionText string
+	if subscriptionInfo != nil {
+		subscriptionName = subscriptionInfo.Name
+		subscriptionText = subscriptionInfo.BotText
+	} else {
+		// Fallback на дефолтные значения
+		subscriptionName = "VIP подписку"
+		subscriptionText = "Оформить VIP можно в тг-боте: https://t.me/gig_combot"
 	}
 
 	content := fmt.Sprintf(`## %s %s создал новую тему в премиум разделе
@@ -225,20 +236,18 @@ func (s *AnnouncementService) generateAnnouncementContent(processed *models.Proc
 
 ## 💎 О премиум контенте
 
-Это анонс платного контента. Полная тема со всеми материалами, комментариями и обсуждением доступна только подписчикам VIP.
+Это анонс платного контента. Полная тема со всеми материалами, комментариями и обсуждением доступна только подписчикам с доступом **"%s"**.
 
-### 🚀 Преимущества VIP подписки:
-- Доступ ко всем премиум разделам форума
+### 🚀 Что даёт эта подписка:
+- Доступ к премиум разделам по данной теме
 - Эксклюзивные материалы от экспертов
 - Участие в закрытых обсуждениях
 - Первоочередная поддержка
 
 ### 🤖 Как получить доступ:
-1. Перейдите в наш Telegram бот: https://t.me/gig_combot
-2. Выберите VIP подписку
-3. Доступ предоставляется автоматически после оплаты
+%s
 
-🔗 **[Перейти к оригинальной теме](%s)** (требуется VIP подписка)
+🔗 **[Перейти к оригинальной теме](%s)** (требуется подписка)
 
 ---
 
@@ -249,6 +258,8 @@ func (s *AnnouncementService) generateAnnouncementContent(processed *models.Proc
 		aiSummary,
 		tagsStr,
 		processed.Category,
+		subscriptionName,
+		subscriptionText,
 		processed.URL,
 	)
 
