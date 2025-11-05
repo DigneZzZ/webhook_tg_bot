@@ -269,9 +269,9 @@ func (s *Server) sendCompleteNotification(data *storage.TopicData) error {
 
 	// Если это платная категория, создаем анонс
 	if s.announcementService != nil && s.announcementService.ShouldCreateAnnouncement(processed) {
-		log.Printf("[Server] 📢 Topic %d is in premium category %d - attempting to create announcement", 
+		log.Printf("[Server] 📢 Topic %d is in premium category %d - attempting to create announcement",
 			processed.TopicID, processed.CategoryID)
-		
+
 		if announcementURL, announcementErr := s.announcementService.CreateAnnouncement(processed); announcementErr != nil {
 			log.Printf("[Server] ❌ Failed to create announcement for topic %d: %v", processed.TopicID, announcementErr)
 		} else if announcementURL != "" {
@@ -285,7 +285,7 @@ func (s *Server) sendCompleteNotification(data *storage.TopicData) error {
 		if s.announcementService == nil {
 			log.Printf("[Server] ℹ️  Announcement service is not initialized")
 		} else {
-			log.Printf("[Server] ℹ️  Topic %d in category %d - no announcement needed", 
+			log.Printf("[Server] ℹ️  Topic %d in category %d - no announcement needed",
 				processed.TopicID, processed.CategoryID)
 		}
 	}

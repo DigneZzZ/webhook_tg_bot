@@ -56,7 +56,7 @@ func NewAnnouncementService(cfg *config.Config) (*AnnouncementService, error) {
 
 // ShouldCreateAnnouncement проверяет, нужно ли создавать анонс для этой темы
 func (s *AnnouncementService) ShouldCreateAnnouncement(processed *models.ProcessedWebhook) bool {
-	log.Printf("[Announcement Check] Topic ID: %d, Title: %s, Category: %d", 
+	log.Printf("[Announcement Check] Topic ID: %d, Title: %s, Category: %d",
 		processed.TopicID, processed.TopicTitle, processed.CategoryID)
 
 	// Проверяем, что анонсы включены
@@ -108,7 +108,7 @@ func (s *AnnouncementService) ShouldCreateAnnouncement(processed *models.Process
 // CreateAnnouncement создает анонс темы в категории анонсов и возвращает URL
 func (s *AnnouncementService) CreateAnnouncement(processed *models.ProcessedWebhook) (string, error) {
 	log.Printf("[Create Announcement] Starting for topic %d", processed.TopicID)
-	
+
 	if !s.ShouldCreateAnnouncement(processed) {
 		log.Printf("[Create Announcement] ❌ ShouldCreateAnnouncement returned false - skipping")
 		return "", nil
@@ -161,15 +161,19 @@ func (s *AnnouncementService) CreateAnnouncement(processed *models.ProcessedWebh
 
 // generateAnnouncementTitle генерирует заголовок для анонса
 func (s *AnnouncementService) generateAnnouncementTitle(processed *models.ProcessedWebhook) string {
-	// Ограничиваем длину заголовка
-	maxLength := 80
+	prefix := "📢 Анонс: "
+	// Discourse обычно ограничивает заголовки до 255 символов, но лучше использовать 200 для безопасности
+	maxTotalLength := 200
+	maxTitleLength := maxTotalLength - len(prefix)
+
 	title := processed.TopicTitle
 
-	if len(title) > maxLength {
-		title = title[:maxLength-3] + "..."
+	// Обрезаем заголовок если он слишком длинный, учитывая место для "..."
+	if len(title) > maxTitleLength {
+		title = title[:maxTitleLength-3] + "..."
 	}
 
-	return fmt.Sprintf("📢 Анонс: %s", title)
+	return prefix + title
 }
 
 // generateAnnouncementContent генерирует содержание анонса с безопасной логикой
