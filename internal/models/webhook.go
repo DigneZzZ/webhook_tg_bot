@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // WebhookTopic представляет данные о созданной теме
 type WebhookTopic struct {
@@ -12,23 +15,58 @@ type WebhookPost struct {
 	Post Post `json:"post"`
 }
 
+// Tag представляет тег в формате объекта
+type Tag struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+// FlexibleTags тип для тегов, который может парсить как массив строк, так и массив объектов
+type FlexibleTags []string
+
+// UnmarshalJSON кастомный парсер для тегов
+func (ft *FlexibleTags) UnmarshalJSON(data []byte) error {
+	// Пробуем сначала как массив строк
+	var stringTags []string
+	if err := json.Unmarshal(data, &stringTags); err == nil {
+		*ft = stringTags
+		return nil
+	}
+
+	// Если не получилось, пробуем как массив объектов
+	var objectTags []Tag
+	if err := json.Unmarshal(data, &objectTags); err == nil {
+		result := make([]string, len(objectTags))
+		for i, tag := range objectTags {
+			result[i] = tag.Name
+		}
+		*ft = result
+		return nil
+	}
+
+	// Если ничего не получилось, возвращаем пустой массив
+	*ft = []string{}
+	return nil
+}
+
 // Topic структура темы из вебхука
 type Topic struct {
-	ID         int       `json:"id"`
-	Title      string    `json:"title"`
-	FancyTitle string    `json:"fancy_title"`
-	PostsCount int       `json:"posts_count"`
-	CreatedAt  time.Time `json:"created_at"`
-	Views      int       `json:"views"`
-	ReplyCount int       `json:"reply_count"`
-	LikeCount  int       `json:"like_count"`
-	CategoryID int       `json:"category_id"`
-	WordCount  int       `json:"word_count"`
-	UserID     int       `json:"user_id"`
-	Tags       []string  `json:"tags"`
-	Slug       string    `json:"slug"`
-	CreatedBy  User      `json:"created_by"`
-	LastPoster User      `json:"last_poster"`
+	ID         int          `json:"id"`
+	Title      string       `json:"title"`
+	FancyTitle string       `json:"fancy_title"`
+	PostsCount int          `json:"posts_count"`
+	CreatedAt  time.Time    `json:"created_at"`
+	Views      int          `json:"views"`
+	ReplyCount int          `json:"reply_count"`
+	LikeCount  int          `json:"like_count"`
+	CategoryID int          `json:"category_id"`
+	WordCount  int          `json:"word_count"`
+	UserID     int          `json:"user_id"`
+	Tags       FlexibleTags `json:"tags"`
+	Slug       string       `json:"slug"`
+	CreatedBy  User         `json:"created_by"`
+	LastPoster User         `json:"last_poster"`
 }
 
 // Post структура поста из вебхука
