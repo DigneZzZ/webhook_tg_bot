@@ -17,5 +17,12 @@ vendor/
 .DS_Store
 Thumbs.db
 
-# other
+# Test files and temporary files
+cmd/test_api/
+test_*.go
+test_*.sh
+openapi.json
+
+# Other temporary files
 DISCOURSE_FORUM_POST.md
+webhook_bot

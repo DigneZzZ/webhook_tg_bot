@@ -32,6 +32,12 @@
 - **Блокировка ботов** (discobot, chatbot и других)
 - **Платные разделы** с уведомлениями о подписке
 
+### 📢 Система анонсов (NEW!)
+- **Автоматическое создание анонсов** для платных разделов
+- **AI-генерируемые резюме** без раскрытия платного контента
+- **Интеграция с Discourse API** для создания тем
+- **Безопасные превью** с призывом к подписке
+
 ### 🚀 Production Ready
 - Docker контейнеризация с healthcheck
 - GitHub Actions для автоматической сборки
@@ -51,6 +57,7 @@
 🏷 Теги: #docker, #database, #troubleshooting
 
 💎 Данный раздел доступен только по подписке.
+💬 Обсудить в анонсе - задавайте вопросы и делитесь мнением!
 ```
 
 ### Префиксы ролей
@@ -76,6 +83,18 @@ WEBHOOK_SECRET=your_super_secret_key_here                # Секретный к
 WEBHOOK_PORT=8080                                        # Порт для webhook сервера
 WEBHOOK_PATH=/webhook                                     # Путь endpoint'а
 WEBHOOK_DOMAIN=https://your-server.com                   # Домен сервера (опционально)
+```
+
+### 📢 Настройки анонсов
+```bash
+# Discourse API для создания анонсов
+DISCOURSE_API_KEY=your_discourse_api_key_here            # API ключ из админки Discourse
+DISCOURSE_API_USERNAME=bot_username                      # Имя пользователя бота
+DISCOURSE_BASE_URL=https://your-forum.com                # URL форума
+
+# Анонсы
+ENABLE_ANNOUNCEMENTS=true                                # Включить создание анонсов
+ANNOUNCEMENT_CATEGORY_ID=28                               # ID категории для анонсов
 ```
 
 ### 🤖 ИИ настройки
@@ -182,6 +201,24 @@ Which events: Topic Event + Post Event
 ### 2. Получение ID категорий
 Перейдите в админку: `https://your-forum.com/admin/customize/site_texts`
 Или посмотрите URL категории: `https://your-forum.com/c/category-name/5` (где 5 - это ID)
+
+### 3. Создание API ключей для анонсов (опционально)
+1. Перейдите в **Admin → API → API Keys**
+2. Нажмите **New API Key**
+3. Заполните параметры:
+```
+Description: webhook_tg_bot_announcements
+User Level: Single User
+User: bot_username (создайте отдельного пользователя-бота)
+Scope: Global (или ограничьте нужными endpoints)
+```
+4. Скопируйте ключ в `DISCOURSE_API_KEY`
+5. Укажите имя пользователя в `DISCOURSE_API_USERNAME`
+
+### 4. Создание категории для анонсов
+1. Перейдите в **Admin → Structure → Categories**
+2. Создайте новую категорию (например "Анонсы VIP")
+3. Запомните ID категории для `ANNOUNCEMENT_CATEGORY_ID`
 
 ### 3. Получение ID пользователей  
 Перейдите в админку: `https://your-forum.com/admin/users/USERNAME`

@@ -37,7 +37,7 @@ func New(cfg *config.Config) (*TelegramBot, error) {
 	}, nil
 }
 
-func (tb *TelegramBot) SendCompleteNotification(processed *models.ProcessedWebhook, isPremium bool) error {
+func (tb *TelegramBot) SendCompleteNotification(processed *models.ProcessedWebhook, subscriptionInfo *config.SubscriptionInfo) error {
 	// Генерируем краткое резюме с помощью AI
 	summary, err := tb.ai.GenerateSummary(processed.Content, processed.TopicTitle, processed.AuthorRole, processed.Category)
 	if err != nil {
@@ -73,9 +73,14 @@ func (tb *TelegramBot) SendCompleteNotification(processed *models.ProcessedWebho
 		formatTags(processed.Tags))
 
 	// Добавляем информацию о платности, если нужно
-	if isPremium {
-		message += "\n\n💎 <b>Данный раздел доступен только по подписке.</b>\n" +
-			"Оформить VIP можно в тг-боте: @gig_combot"
+	if subscriptionInfo != nil {
+		// Используем кастомный текст из конфига
+		message += "\n\n💎 <b>" + subscriptionInfo.Name + "</b>\n" + subscriptionInfo.BotText
+
+		// Если есть ссылка на анонс, добавляем её
+		if processed.AnnouncementURL != "" {
+			message += "\n\n💬 <a href=\"" + processed.AnnouncementURL + "\">Обсудить в анонсе</a> - задавайте вопросы и делитесь мнением!"
+		}
 	}
 
 	// Определяем thread ID на основе категории

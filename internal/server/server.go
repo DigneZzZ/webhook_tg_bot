@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 
+	"webhook_tg_bot/internal/announcements"
 	"webhook_tg_bot/internal/bot"
 	"webhook_tg_bot/internal/config"
 	"webhook_tg_bot/internal/models"
@@ -20,18 +21,32 @@ import (
 )
 
 type Server struct {
-	config  *config.Config
-	bot     *bot.TelegramBot
-	router  *mux.Router
-	storage *storage.MemoryStorage
+	config              *config.Config
+	bot                 *bot.TelegramBot
+	router              *mux.Router
+	storage             *storage.MemoryStorage
+	announcementService *announcements.AnnouncementService
 }
 
 func New(cfg *config.Config, bot *bot.TelegramBot) *Server {
+	// Инициализируем сервис анонсов
+	var announcementService *announcements.AnnouncementService
+	if cfg.EnableAnnouncements {
+		service, err := announcements.NewAnnouncementService(cfg)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize announcement service: %v", err)
+		} else {
+			announcementService = service
+			log.Printf("Announcement service initialized successfully")
+		}
+	}
+
 	s := &Server{
-		config:  cfg,
-		bot:     bot,
-		router:  mux.NewRouter(),
-		storage: storage.NewMemoryStorage(),
+		config:              cfg,
+		bot:                 bot,
+		router:              mux.NewRouter(),
+		storage:             storage.NewMemoryStorage(),
+		announcementService: announcementService,
 	}
 
 	s.setupRoutes()
@@ -252,8 +267,32 @@ func (s *Server) sendCompleteNotification(data *storage.TopicData) error {
 		URL:        fmt.Sprintf("%s/t/%s/%d", s.config.BaseURL, data.Topic.Slug, data.Topic.ID),
 	}
 
-	// Отправляем уведомление
-	err := s.bot.SendCompleteNotification(processed, s.config.IsPremiumCategory(data.Topic.CategoryID))
+	// Если это платная категория, создаем анонс
+	subscriptionInfo := s.config.GetSubscriptionInfo(data.Topic.CategoryID)
+	if s.announcementService != nil && s.announcementService.ShouldCreateAnnouncement(processed) {
+		log.Printf("[Server] 📢 Topic %d is in premium category %d - attempting to create announcement",
+			processed.TopicID, processed.CategoryID)
+
+		if announcementURL, announcementErr := s.announcementService.CreateAnnouncement(processed, subscriptionInfo); announcementErr != nil {
+			log.Printf("[Server] ❌ Failed to create announcement for topic %d: %v", processed.TopicID, announcementErr)
+		} else if announcementURL != "" {
+			// Сохраняем ссылку на анонс для использования в Telegram уведомлении
+			log.Printf("[Server] ✅ Successfully created announcement at: %s", announcementURL)
+			processed.AnnouncementURL = announcementURL
+		} else {
+			log.Printf("[Server] ⚠️  Announcement service returned empty URL (announcement was not created)")
+		}
+	} else {
+		if s.announcementService == nil {
+			log.Printf("[Server] ℹ️  Announcement service is not initialized")
+		} else {
+			log.Printf("[Server] ℹ️  Topic %d in category %d - no announcement needed",
+				processed.TopicID, processed.CategoryID)
+		}
+	}
+
+	// Отправляем уведомление в Telegram (с возможной ссылкой на анонс)
+	err := s.bot.SendCompleteNotification(processed, subscriptionInfo)
 
 	// Удаляем данные из хранилища после отправки
 	s.storage.RemoveTopic(data.Topic.ID)
