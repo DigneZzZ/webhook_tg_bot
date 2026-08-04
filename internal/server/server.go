@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -228,6 +229,28 @@ func (s *Server) processPost(post *models.Post) error {
 	return nil
 }
 
+var imgTagRe = regexp.MustCompile(`<img[^>]+src="([^"]+)"[^>]*>`)
+
+// extractFirstImage достаёт первую контентную картинку из cooked-HTML поста,
+// пропуская смайлы, аватарки и иконки сайтов из onebox-превью
+func extractFirstImage(cooked string) string {
+	for _, m := range imgTagRe.FindAllStringSubmatch(cooked, -1) {
+		tag, src := m[0], m[1]
+		if strings.Contains(tag, "emoji") || strings.Contains(tag, "avatar") ||
+			strings.Contains(tag, "site-icon") || strings.Contains(src, "/emoji/") {
+			continue
+		}
+		if strings.HasPrefix(src, "//") {
+			src = "https:" + src
+		}
+		if !strings.HasPrefix(src, "http") {
+			continue
+		}
+		return src
+	}
+	return ""
+}
+
 func (s *Server) getCategoryName(data *storage.TopicData) string {
 	// Пытаемся получить имя категории из данных поста
 	if data.Post != nil && data.Post.CategorySlug != "" {
@@ -313,6 +336,7 @@ func (s *Server) sendCompleteNotification(data *storage.TopicData) error {
 		Content:    data.Post.Raw,
 		Tags:       data.Topic.Tags,
 		URL:        fmt.Sprintf("%s/t/%s/%d", s.config.BaseURL, data.Topic.Slug, data.Topic.ID),
+		ImageURL:   extractFirstImage(data.Post.Cooked),
 	}
 
 	// Если это платная категория, создаем анонс

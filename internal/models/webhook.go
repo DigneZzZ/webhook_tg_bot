@@ -118,4 +118,5 @@ type ProcessedWebhook struct {
 	Summary         string
 	URL             string
 	AnnouncementURL string // URL анонса, если был создан
+	ImageURL        string // первая контентная картинка поста для превью в Telegram
 }

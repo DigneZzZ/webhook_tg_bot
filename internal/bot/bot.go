@@ -6,6 +6,7 @@ import (
 	"html"
 	"log"
 	"time"
+	"unicode/utf8"
 	"webhook_tg_bot/internal/ai"
 	"webhook_tg_bot/internal/config"
 	"webhook_tg_bot/internal/models"
@@ -91,6 +92,15 @@ func (tb *TelegramBot) SendCompleteNotification(processed *models.ProcessedWebho
 	// Определяем thread ID на основе категории
 	threadID := tb.config.GetThreadIDForCategory(processed.CategoryID)
 
+	// Если в посте есть картинка — отправляем анонс как фото с подписью
+	// (лимит подписи Telegram — 1024 символа)
+	if processed.ImageURL != "" && utf8.RuneCountInString(message) <= 1024 {
+		if err := tb.sendPhoto(processed.ImageURL, message, threadID); err == nil {
+			return nil
+		}
+		log.Printf("Telegram: photo send failed, falling back to text message")
+	}
+
 	return tb.sendMessage(message, threadID)
 }
 
@@ -103,8 +113,24 @@ func (tb *TelegramBot) sendMessage(text string, threadID int) error {
 		msg.ReplyToMessageID = threadID
 	}
 
-	// Ретраи на временные сбои, чтобы не терять анонсы:
-	// данные темы к этому моменту уже удалены из storage
+	return tb.sendWithRetry(msg)
+}
+
+// sendPhoto отправляет анонс как фото с HTML-подписью
+func (tb *TelegramBot) sendPhoto(imageURL, caption string, threadID int) error {
+	photo := tgbotapi.NewPhoto(tb.config.TelegramChatID, tgbotapi.FileURL(imageURL))
+	photo.Caption = caption
+	photo.ParseMode = "HTML"
+	if threadID != 0 {
+		photo.ReplyToMessageID = threadID
+	}
+
+	return tb.sendWithRetry(photo)
+}
+
+// sendWithRetry выполняет отправку с ретраями на временные сбои,
+// чтобы не терять анонсы: данные темы уже удалены из storage
+func (tb *TelegramBot) sendWithRetry(msg tgbotapi.Chattable) error {
 	const maxAttempts = 3
 	backoff := 2 * time.Second
 	var lastErr error
