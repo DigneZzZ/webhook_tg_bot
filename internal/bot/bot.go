@@ -1,8 +1,11 @@
 package bot
 
 import (
+	"errors"
 	"fmt"
+	"html"
 	"log"
+	"time"
 	"webhook_tg_bot/internal/ai"
 	"webhook_tg_bot/internal/config"
 	"webhook_tg_bot/internal/models"
@@ -60,17 +63,19 @@ func (tb *TelegramBot) SendCompleteNotification(processed *models.ProcessedWebho
 		rolePrefix = ""
 	}
 
-	// Формируем сообщение по новому формату
+	// Формируем сообщение по новому формату.
+	// Пользовательские данные экранируем: тема с "<" или "&" в названии
+	// иначе сломает HTML-разметку, и Telegram отклонит всё сообщение
 	message := fmt.Sprintf("👤 %s<b>%s</b> создал новый пост: <b>%s</b>\n\n"+
 		"📋 %s\n\n"+
 		"🔗 <a href=\"%s\">Ссылка на тему</a>\n\n"+
 		"🏷 Теги: %s",
 		rolePrefix,
-		processed.Author,
-		processed.TopicTitle,
-		summary,
+		html.EscapeString(processed.Author),
+		html.EscapeString(processed.TopicTitle),
+		html.EscapeString(summary),
 		processed.URL,
-		formatTags(processed.Tags))
+		html.EscapeString(formatTags(processed.Tags)))
 
 	// Добавляем информацию о платности, если нужно
 	if subscriptionInfo != nil {
@@ -98,12 +103,39 @@ func (tb *TelegramBot) sendMessage(text string, threadID int) error {
 		msg.ReplyToMessageID = threadID
 	}
 
-	_, err := tb.bot.Send(msg)
-	if err != nil {
-		return fmt.Errorf("failed to send telegram message: %v", err)
+	// Ретраи на временные сбои, чтобы не терять анонсы:
+	// данные темы к этому моменту уже удалены из storage
+	const maxAttempts = 3
+	backoff := 2 * time.Second
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		_, err := tb.bot.Send(msg)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		log.Printf("Telegram: send failed (attempt %d/%d): %v", attempt, maxAttempts, err)
+
+		if !isRetryableTelegramError(err) {
+			break
+		}
+		if attempt < maxAttempts {
+			time.Sleep(backoff)
+			backoff *= 2
+		}
 	}
 
-	return nil
+	return fmt.Errorf("failed to send telegram message: %v", lastErr)
+}
+
+// isRetryableTelegramError — 4xx (кроме 429) постоянны (например, битая
+// HTML-разметка), их повторять бессмысленно; сеть, 429 и 5xx — временные
+func isRetryableTelegramError(err error) bool {
+	var apiErr *tgbotapi.Error
+	if errors.As(err, &apiErr) {
+		return apiErr.Code == 429 || apiErr.Code >= 500
+	}
+	return true
 }
 
 func formatTags(tags []string) string {

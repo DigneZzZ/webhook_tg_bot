@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"webhook_tg_bot/internal/bot"
 	"webhook_tg_bot/internal/config"
@@ -47,5 +49,12 @@ func main() {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
 
+	// Graceful shutdown: даём в полёте находящимся вебхукам дообработаться
 	log.Println("Shutting down...")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := webhookServer.Shutdown(ctx); err != nil {
+		log.Printf("Shutdown error: %v", err)
+	}
+	log.Println("Server stopped")
 }

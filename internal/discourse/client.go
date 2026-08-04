@@ -167,15 +167,41 @@ func (c *Client) GetCategoryByID(categoryID int) (*Category, error) {
 }
 
 // makePostRequest выполняет POST запрос к Discourse API
+// с ретраями на временные сбои (сеть, 429, 5xx)
 func (c *Client) makePostRequest(url string, payload interface{}) (*CreateTopicResponse, error) {
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %v", err)
 	}
 
+	const maxAttempts = 3
+	backoff := 2 * time.Second
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		result, retryable, err := c.doPostRequest(url, jsonData)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		log.Printf("Discourse: POST failed (attempt %d/%d): %v", attempt, maxAttempts, err)
+
+		if !retryable {
+			break
+		}
+		if attempt < maxAttempts {
+			time.Sleep(backoff)
+			backoff *= 2
+		}
+	}
+
+	return nil, lastErr
+}
+
+// doPostRequest — одна попытка POST запроса; retryable=true для временных ошибок
+func (c *Client) doPostRequest(url string, jsonData []byte) (*CreateTopicResponse, bool, error) {
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", err)
+		return nil, false, fmt.Errorf("failed to create request: %v", err)
 	}
 
 	c.setHeaders(req)
@@ -183,13 +209,13 @@ func (c *Client) makePostRequest(url string, payload interface{}) (*CreateTopicR
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %v", err)
+		return nil, true, fmt.Errorf("failed to execute request: %v", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %v", err)
+		return nil, true, fmt.Errorf("failed to read response body: %v", err)
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
@@ -199,15 +225,16 @@ func (c *Client) makePostRequest(url string, payload interface{}) (*CreateTopicR
 		log.Printf("  Body: %s", string(body))
 		log.Printf("  URL: %s", url)
 
-		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+		retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		return nil, retryable, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result CreateTopicResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %v", err)
+		return nil, false, fmt.Errorf("failed to unmarshal response: %v", err)
 	}
 
-	return &result, nil
+	return &result, false, nil
 }
 
 // makeGetRequest выполняет GET запрос к Discourse API

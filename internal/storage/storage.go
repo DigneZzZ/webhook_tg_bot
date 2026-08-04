@@ -16,22 +16,40 @@ type TopicData struct {
 
 // MemoryStorage простое хранилище в памяти
 type MemoryStorage struct {
-	topics map[int]*TopicData
-	mutex  sync.RWMutex
-	ttl    time.Duration
+	topics  map[int]*TopicData
+	sent    map[int]time.Time // темы, по которым уведомление уже отправлено
+	mutex   sync.RWMutex
+	ttl     time.Duration
+	sentTTL time.Duration
 }
 
 // NewMemoryStorage создает новое хранилище
 func NewMemoryStorage() *MemoryStorage {
 	storage := &MemoryStorage{
-		topics: make(map[int]*TopicData),
-		ttl:    5 * time.Minute, // TTL для автоочистки
+		topics:  make(map[int]*TopicData),
+		sent:    make(map[int]time.Time),
+		ttl:     5 * time.Minute, // TTL для автоочистки
+		sentTTL: 6 * time.Hour,   // защита от повторных вебхуков Discourse
 	}
 
 	// Запускаем горутину для очистки устаревших записей
 	go storage.cleanup()
 
 	return storage
+}
+
+// TryMarkSent атомарно помечает тему как отправленную.
+// Возвращает false, если уведомление по ней уже отправлялось —
+// защита от дублей при повторных вебхуках и гонке topic/post событий.
+func (s *MemoryStorage) TryMarkSent(topicID int) bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if _, exists := s.sent[topicID]; exists {
+		return false
+	}
+	s.sent[topicID] = time.Now()
+	return true
 }
 
 // AddTopic добавляет данные о теме
@@ -100,6 +118,11 @@ func (s *MemoryStorage) cleanup() {
 		for topicID, data := range s.topics {
 			if now.Sub(data.CreatedAt) > s.ttl {
 				delete(s.topics, topicID)
+			}
+		}
+		for topicID, sentAt := range s.sent {
+			if now.Sub(sentAt) > s.sentTTL {
+				delete(s.sent, topicID)
 			}
 		}
 		s.mutex.Unlock()

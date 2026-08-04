@@ -1,15 +1,18 @@
 package server
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 
 	"webhook_tg_bot/internal/announcements"
 	"webhook_tg_bot/internal/bot"
@@ -26,6 +29,8 @@ type Server struct {
 	router              *mux.Router
 	storage             *storage.MemoryStorage
 	announcementService *announcements.AnnouncementService
+	httpServer          *http.Server
+	wg                  sync.WaitGroup // in-flight обработка вебхуков
 }
 
 func New(cfg *config.Config, bot *bot.TelegramBot) *Server {
@@ -59,7 +64,38 @@ func (s *Server) setupRoutes() {
 }
 
 func (s *Server) Start() error {
-	return http.ListenAndServe(":"+s.config.WebhookPort, s.router)
+	s.httpServer = &http.Server{
+		Addr:    ":" + s.config.WebhookPort,
+		Handler: s.router,
+	}
+	if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// Shutdown останавливает HTTP-сервер и дожидается завершения
+// фоновой обработки вебхуков (в пределах таймаута ctx)
+func (s *Server) Shutdown(ctx context.Context) error {
+	var err error
+	if s.httpServer != nil {
+		err = s.httpServer.Shutdown(ctx)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		log.Printf("Shutdown: all in-flight webhook processing finished")
+	case <-ctx.Done():
+		log.Printf("Shutdown: timed out waiting for in-flight webhook processing")
+	}
+
+	return err
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -83,12 +119,16 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Определяем тип вебхука и обрабатываем
-	if err := s.processWebhook(body); err != nil {
-		log.Printf("Error processing webhook: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
+	// Отвечаем Discourse сразу: обработка (OpenAI + Telegram + Discourse API)
+	// может занять больше минуты, а Discourse таймаутит вебхук за секунды
+	// и после серии фейлов отключает его. Обрабатываем в фоне.
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		if err := s.processWebhook(body); err != nil {
+			log.Printf("Error processing webhook: %v", err)
+		}
+	}()
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
@@ -247,6 +287,14 @@ func (s *Server) getUserRole(user models.User, post *models.Post) string {
 }
 
 func (s *Server) sendCompleteNotification(data *storage.TopicData) error {
+	// Дедупликация: topic- и post-вебхуки приходят независимо и могут
+	// одновременно увидеть полные данные; повторные вебхуки Discourse
+	// тоже не должны порождать второй анонс
+	if !s.storage.TryMarkSent(data.Topic.ID) {
+		log.Printf("Skipping topic %d - notification already sent (duplicate webhook)", data.Topic.ID)
+		return nil
+	}
+
 	// Определяем роль автора
 	authorRole := s.getUserRole(data.Topic.CreatedBy, data.Post)
 	log.Printf("Author: %s, Role: %s (Admin: %v, Moderator: %v, Staff: %v, TrustLevel: %d)",
