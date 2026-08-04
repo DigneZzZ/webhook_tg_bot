@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -25,57 +26,59 @@ type OpenAIProvider struct {
 	debug  bool
 }
 
+// maxAttempts — всего попыток запроса (1 основная + 2 ретрая с бэкоффом)
+const maxAttempts = 3
+
 // NewProvider создает провайдер AI с официальным OpenAI SDK
 func NewProvider(cfg *config.Config) (AIProvider, error) {
 	if cfg.OpenAIAPIKey == "" {
-		return nil, fmt.Errorf("OpenAI API key is required")
+		return nil, fmt.Errorf("OpenAI API key is required (set OPENAI_API_KEY)")
 	}
 
-	// Создаем клиента с API ключом
-	client := openai.NewClient(
+	// Ретраи делаем сами в GenerateSummary, чтобы логировать каждую попытку
+	opts := []option.RequestOption{
 		option.WithAPIKey(cfg.OpenAIAPIKey),
-	)
-
-	// Определяем модель
-	var model shared.ChatModel
-	switch cfg.OpenAIModel {
-	case "gpt-5-mini":
-		model = shared.ChatModelGPT5Mini
-	case "gpt-5-nano":
-		model = shared.ChatModelGPT5Nano
-	case "gpt-5":
-		model = shared.ChatModelGPT5
-	case "gpt-4o":
-		model = shared.ChatModelGPT4o
-	case "gpt-4o-mini":
-		model = shared.ChatModelGPT4oMini
-	default:
-		model = shared.ChatModelGPT5Nano // По умолчанию используем стабильную модель для тестирования
+		option.WithMaxRetries(0),
 	}
+	// OPENAI_BASE_URL позволяет ходить через прокси/совместимый шлюз,
+	// если api.openai.com недоступен напрямую (например, региональный блок)
+	if cfg.OpenAIBaseURL != "" {
+		opts = append(opts, option.WithBaseURL(cfg.OpenAIBaseURL))
+	}
+	client := openai.NewClient(opts...)
+
+	// Имя модели передаётся как есть: так работают и новые модели
+	// (gpt-5.1, gpt-5.1-mini и т.д.) без изменения кода
+	modelName := cfg.OpenAIModel
+	if modelName == "" {
+		modelName = "gpt-5-nano"
+	}
+	log.Printf("AI: provider initialized, model=%s", modelName)
 
 	return &OpenAIProvider{
 		client: client,
-		model:  model,
+		model:  shared.ChatModel(modelName),
 		debug:  cfg.Debug,
 	}, nil
 }
 
-// isGPT5Model проверяет, является ли модель GPT-5 серии
-func (p *OpenAIProvider) isGPT5Model() bool {
-	return p.model == shared.ChatModelGPT5 ||
-		p.model == shared.ChatModelGPT5Mini ||
-		p.model == shared.ChatModelGPT5Nano
+// isGPT5Family — вся линейка gpt-5*: gpt-5, gpt-5-mini/nano, gpt-5.1 и новее
+func (p *OpenAIProvider) isGPT5Family() bool {
+	return strings.HasPrefix(string(p.model), "gpt-5")
+}
+
+// isGPT51OrNewer — модели gpt-5.1+ поддерживают reasoning_effort=none вместо minimal
+func (p *OpenAIProvider) isGPT51OrNewer() bool {
+	return strings.HasPrefix(string(p.model), "gpt-5.")
 }
 
 // isReasoningModel проверяет, является ли модель reasoning model
 func (p *OpenAIProvider) isReasoningModel() bool {
-	// Официальный SDK автоматически обрабатывает reasoning модели
-	// Но мы можем проверить модель для настройки параметров
 	modelStr := string(p.model)
 	return strings.HasPrefix(modelStr, "o1") ||
 		strings.HasPrefix(modelStr, "o3") ||
 		strings.HasPrefix(modelStr, "o4") ||
-		p.isGPT5Model()
+		p.isGPT5Family()
 }
 
 // debugLog выводит логи только если включен debug режим
@@ -83,6 +86,32 @@ func (p *OpenAIProvider) debugLog(format string, args ...interface{}) {
 	if p.debug {
 		log.Printf(format, args...)
 	}
+}
+
+// isRetryableError — временные ошибки, которые имеет смысл повторить:
+// таймаут/сеть, 5xx и rate-limit 429. Ошибка исчерпанной квоты
+// (insufficient_quota) постоянная — ретраи только тратят время.
+func isRetryableError(err error) bool {
+	var apierr *openai.Error
+	if errors.As(err, &apierr) {
+		if apierr.StatusCode == 429 {
+			return apierr.Type != "insufficient_quota"
+		}
+		return apierr.StatusCode >= 500
+	}
+	// Не-API ошибка: таймаут контекста или сетевой сбой
+	return true
+}
+
+// logAPIError пишет в лог реальную причину сбоя: HTTP-код, тип и сообщение API
+func logAPIError(attempt int, err error) {
+	var apierr *openai.Error
+	if errors.As(err, &apierr) {
+		log.Printf("AI: OpenAI API error (attempt %d/%d): status=%d type=%s code=%v message=%s",
+			attempt, maxAttempts, apierr.StatusCode, apierr.Type, apierr.Code, apierr.Message)
+		return
+	}
+	log.Printf("AI: request failed (attempt %d/%d): %v", attempt, maxAttempts, err)
 }
 
 // GenerateSummary генерирует краткое резюме с использованием GPT-5 параметров
@@ -145,10 +174,38 @@ func (p *OpenAIProvider) GenerateSummary(content, title, authorRole, category st
 
 Описание поста:`, title, category, authorRole, cleanContent)
 
+	var lastErr error
+	backoff := 2 * time.Second
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		result, err := p.complete(prompt)
+		if err == nil {
+			// Если результат пустой, возвращаем дефолтное сообщение
+			if len(result) == 0 {
+				return "Автор оставил краткое сообщение", nil
+			}
+			return result, nil
+		}
+
+		lastErr = err
+		logAPIError(attempt, err)
+
+		if !isRetryableError(err) {
+			break
+		}
+		if attempt < maxAttempts {
+			p.debugLog("AI: retrying in %s...", backoff)
+			time.Sleep(backoff)
+			backoff *= 2
+		}
+	}
+
+	return "", fmt.Errorf("OpenAI API error: %w", lastErr)
+}
+
+// complete выполняет один запрос к Chat Completions API с таймаутом 30с
+func (p *OpenAIProvider) complete(prompt string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	p.debugLog("AI: Creating request parameters...")
 
 	// Создаем параметры запроса с GPT-5 поддержкой
 	params := openai.ChatCompletionNewParams{
@@ -160,44 +217,36 @@ func (p *OpenAIProvider) GenerateSummary(content, title, authorRole, category st
 	}
 
 	// Настраиваем специфичные для GPT-5 параметры
-	if p.isGPT5Model() {
-		p.debugLog("AI: Using GPT-5 parameters")
-		// Используем минимальные значения для надежности
-		params.Verbosity = openai.ChatCompletionNewParamsVerbosityLow
-		params.ReasoningEffort = shared.ReasoningEffortMinimal
-		p.debugLog("AI: Set verbosity to low and reasoning effort to minimal for reliability")
+	if p.isGPT5Family() {
+		if p.isGPT51OrNewer() {
+			// gpt-5.1+ вместо minimal используют none; verbosity в Chat Completions
+			// у новых моделей не поддерживается — длину ограничиваем промптом
+			// и max_completion_tokens
+			params.ReasoningEffort = shared.ReasoningEffort("none")
+		} else {
+			params.Verbosity = openai.ChatCompletionNewParamsVerbosityLow
+			params.ReasoningEffort = shared.ReasoningEffortMinimal
+		}
+		p.debugLog("AI: Using GPT-5 parameters (reasoning=%s)", params.ReasoningEffort)
 	} else if p.isReasoningModel() {
 		p.debugLog("AI: Using reasoning model parameters")
-		// Для других reasoning моделей используем только ReasoningEffort
 		params.ReasoningEffort = shared.ReasoningEffortMedium
 	} else {
 		p.debugLog("AI: Using standard model parameters")
-		// Для стандартных моделей используем классические параметры
 		params.Temperature = openai.Float(0.2)
 	}
 
 	p.debugLog("AI: Making OpenAI API call...")
-	// Выполняем запрос
 	completion, err := p.client.Chat.Completions.New(ctx, params)
 	if err != nil {
-		log.Printf("AI: OpenAI API error: %v", err)
-		return "", fmt.Errorf("OpenAI API error: %v", err)
+		return "", err
 	}
 
-	p.debugLog("AI: Received response, processing...")
 	if len(completion.Choices) == 0 {
-		p.debugLog("AI: No choices in response")
 		return "", fmt.Errorf("no response from OpenAI")
 	}
 
 	result := strings.TrimSpace(completion.Choices[0].Message.Content)
-	p.debugLog("AI: Raw response: '%s'", completion.Choices[0].Message.Content)
 	p.debugLog("AI: Generated summary successfully, length: %d, content: '%s'", len(result), result)
-
-	// Если результат пустой, возвращаем дефолтное сообщение
-	if len(result) == 0 {
-		return "Автор оставил краткое сообщение", nil
-	}
-
 	return result, nil
 }

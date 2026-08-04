@@ -41,8 +41,8 @@ func (tb *TelegramBot) SendCompleteNotification(processed *models.ProcessedWebho
 	// Генерируем краткое резюме с помощью AI
 	summary, err := tb.ai.GenerateSummary(processed.Content, processed.TopicTitle, processed.AuthorRole, processed.Category)
 	if err != nil {
-		log.Printf("Failed to generate AI summary: %v", err)
-		summary = "Не удалось сгенерировать резюме"
+		log.Printf("Failed to generate AI summary, falling back to neutral phrase: %v", err)
+		summary = "Подробности — по ссылке ниже"
 	}
 
 	// Определяем префикс для роли автора

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -22,8 +23,9 @@ type Config struct {
 	WebhookPath   string
 
 	// AI settings
-	OpenAIAPIKey string
-	OpenAIModel  string
+	OpenAIAPIKey  string
+	OpenAIModel   string
+	OpenAIBaseURL string // необязательный: прокси/совместимый шлюз вместо api.openai.com
 
 	// Debug settings
 	Debug bool
@@ -119,9 +121,19 @@ func Load() (*Config, error) {
 
 	// AI settings
 	cfg.OpenAIAPIKey = os.Getenv("OPENAI_API_KEY")
+	if cfg.OpenAIAPIKey == "" {
+		return nil, fmt.Errorf("OPENAI_API_KEY is required: AI-резюме не смогут генерироваться без ключа OpenAI")
+	}
 	cfg.OpenAIModel = os.Getenv("OPENAI_MODEL")
 	if cfg.OpenAIModel == "" {
 		cfg.OpenAIModel = "gpt-5-mini"
+		log.Printf("Config: OPENAI_MODEL not set, using default: %s", cfg.OpenAIModel)
+	} else {
+		log.Printf("Config: OPENAI_MODEL=%s", cfg.OpenAIModel)
+	}
+	cfg.OpenAIBaseURL = os.Getenv("OPENAI_BASE_URL")
+	if cfg.OpenAIBaseURL != "" {
+		log.Printf("Config: OPENAI_BASE_URL=%s", cfg.OpenAIBaseURL)
 	}
 
 	// Debug settings
